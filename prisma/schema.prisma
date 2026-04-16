@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// AUTH (NextAuth v5 compatible)
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  objectives    Objective[]
+  focusConfigs  FocusConfig[]
+  focusSessions FocusSession[]
+  tags          Tag[]
+  preferences   UserPreferences?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================
+// USER PREFERENCES
+// ============================================================
+
+model UserPreferences {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  theme             String  @default("system") // system | light | dark
+  language          String  @default("pt-BR")
+  soundEnabled      Boolean @default(true)
+  notificationsEnabled Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// OBJECTIVES
+// ============================================================
+
+model Objective {
+  id             String          @id @default(cuid())
+  userId         String
+  title          String
+  description    String?
+  targetHours    Float?
+  targetSessions Int?
+  deadline       DateTime?
+  status         ObjectiveStatus @default(ACTIVE)
+  color          String          @default("#6366f1")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  focusSessions FocusSession[]
+  tags          TagOnObjective[]
+
+  @@index([userId, status])
+  @@index([userId, deletedAt])
+}
+
+enum ObjectiveStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+// ============================================================
+// FOCUS CONFIG (templates reutilizaveis)
+// ============================================================
+
+model FocusConfig {
+  id                      String         @id @default(cuid())
+  userId                  String
+  name                    String
+  methodology             FocusMethodology @default(POMODORO)
+  focusDuration           Int            @default(25)   // minutos
+  shortBreakDuration      Int            @default(5)    // minutos
+  longBreakDuration       Int?           @default(15)   // minutos
+  sessionsBeforeLongBreak Int?           @default(4)
+  autoStartBreak          Boolean        @default(false)
+  autoStartFocus          Boolean        @default(false)
+  soundEnabled            Boolean        @default(true)
+  soundType               String?
+  isDefault               Boolean        @default(false)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  focusSessions FocusSession[]
+
+  @@index([userId])
+}
+
+enum FocusMethodology {
+  POMODORO
+  DEEP_WORK
+  FLOWTIME
+  CUSTOM
+}
+
+// ============================================================
+// FOCUS SESSION (sessao executada)
+// ============================================================
+
+model FocusSession {
+  id               String             @id @default(cuid())
+  userId           String
+  objectiveId      String?
+  focusConfigId    String
+  startedAt        DateTime           @default(now())
+  endedAt          DateTime?
+  plannedDuration  Int                // minutos
+  actualDuration   Int?               // minutos
+  status           FocusSessionStatus @default(IN_PROGRESS)
+  pauseCount       Int                @default(0)
+  totalPauseTime   Int                @default(0) // segundos
+  notes            String?
+  rating           Int?               // 1-5
+  createdAt        DateTime           @default(now())
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objective   Objective?    @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  focusConfig FocusConfig   @relation(fields: [focusConfigId], references: [id])
+  intervals   FocusInterval[]
+  tags        TagOnSession[]
+
+  @@index([userId, status])
+  @@index([userId, startedAt])
+  @@index([userId, objectiveId])
+  @@index([objectiveId])
+}
+
+enum FocusSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================================
+// FOCUS INTERVAL (cada bloco dentro da sessao)
+// ============================================================
+
+model FocusInterval {
+  id        String           @id @default(cuid())
+  sessionId String
+  type      FocusIntervalType
+  startedAt DateTime         @default(now())
+  endedAt   DateTime?
+  duration  Int              @default(0) // segundos
+  completed Boolean          @default(false)
+
+  session FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+enum FocusIntervalType {
+  FOCUS
+  SHORT_BREAK
+  LONG_BREAK
+}
+
+// ============================================================
+// TAGS
+// ============================================================
+
+model Tag {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+  color  String @default("#8b5cf6")
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectives TagOnObjective[]
+  sessions   TagOnSession[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model TagOnObjective {
+  objectiveId String
+  tagId       String
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([objectiveId, tagId])
+}
+
+model TagOnSession {
+  sessionId String
+  tagId     String
+
+  session FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tag     Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, tagId])
+}

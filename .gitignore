@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+
+# next.js
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# prisma
+/src/generated/prisma
+
+# testing
+/test-results/
+/playwright-report/
+/coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
